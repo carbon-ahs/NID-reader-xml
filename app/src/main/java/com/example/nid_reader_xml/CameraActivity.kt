@@ -73,6 +73,24 @@ class CameraActivity : ComponentActivity() {
                 Toast.makeText(this, it, Toast.LENGTH_SHORT).show()
                 if (it.startsWith("Photo saved")) {
                     val imagePath = it.substringAfter("Photo saved: ").trim()
+
+                    viewModel.nidData.observe(this) { nidData ->
+                        if (nidData != null) {
+                            val intent = Intent(this, ImagePreviewActivity::class.java).apply {
+                                putExtra("IMAGE_PATH", imagePath)
+                                putExtra("NID_DATA", HashMap(nidData)) // send as HashMap
+                            }
+                            startActivity(intent)
+
+                            // ✅ stop observing further to avoid multiple launches
+                            viewModel.nidData.removeObservers(this)
+                        } else {
+                            val intent = Intent(this, ImagePreviewActivity::class.java).apply {
+                                putExtra("IMAGE_PATH", imagePath)
+                            }
+                        }
+                    }
+
                     val intent = Intent(this, ImagePreviewActivity::class.java).apply {
                         putExtra("IMAGE_PATH", imagePath)
                     }
