@@ -35,6 +35,14 @@ class CameraActivity : ComponentActivity() {
         // Initialize ViewModel
         viewModel = ViewModelProvider(this)[CameraViewModel::class.java]
 
+//        viewModel.nidData.observe(this) { nidData ->
+//            textViewMsg.text = nidData.toString() // ✅ updates automatically
+//            if (nidData != null) {
+//                this.nidData = nidData
+//            }
+//        }
+//        textViewMsg.setText(viewModel.getStr())
+
         // Capture button
         buttonCapture.setOnClickListener {
             if (checkStoragePermission()) {

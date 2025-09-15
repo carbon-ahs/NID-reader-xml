@@ -12,6 +12,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.nid_reader_xml.NidUtils.extractNidDataWithDetection
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -26,7 +29,8 @@ class CameraViewModel : ViewModel() {
 
     private val _captureResult = MutableLiveData<String?>()
     val captureResult: LiveData<String?> = _captureResult
-
+    private val _nidData = MutableLiveData<Map<String, String>?>()
+    val nidData: LiveData<Map<String, String>?> get() = _nidData
     lateinit var imageCapture: ImageCapture
         private set
 
@@ -80,7 +84,7 @@ class CameraViewModel : ViewModel() {
         return AspectRatio.RATIO_16_9
     }
 
-    fun takePhoto(
+       fun takePhoto(
         left: Float, top: Float, right: Float, bottom: Float,
         previewWidth: Int, previewHeight: Int
     ) {
@@ -108,7 +112,7 @@ class CameraViewModel : ViewModel() {
                         val rotatedBitmap = if (rotationDegrees != 0) {
                             val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
                             Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-                                .also { bitmap.recycle() }
+//                                .also { bitmap.recycle() }
                         } else bitmap
 
                         FileOutputStream(originalFile).use { out ->
@@ -143,9 +147,17 @@ class CameraViewModel : ViewModel() {
                             croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
                         }
 
-                        croppedBitmap.recycle()
-                        rotatedBitmap.recycle()
 
+                        viewModelScope.launch {
+                            var nidData: Map<String, String>? = null
+                            try {
+                                nidData = extractNidDataWithDetection(croppedBitmap)
+                                Log.d(TAG, "NID Data: $nidData")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "NID extraction failed: ${e.message}", e)
+                            }
+                            _nidData.postValue(nidData)
+                        }
                         _captureResult.value = "Photo saved: ${photoFile.absolutePath}"
                     } catch (e: Exception) {
                         Log.e(TAG, "Cropping failed: ${e.message}", e)
@@ -180,5 +192,9 @@ class CameraViewModel : ViewModel() {
             Surface.ROTATION_270 -> 270
             else -> 0
         }
+    }
+
+    fun getStr() : String {
+        return "ssjfsjf";
     }
 }

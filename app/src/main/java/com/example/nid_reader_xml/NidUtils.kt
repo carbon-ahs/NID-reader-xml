@@ -65,6 +65,18 @@ object NidUtils {
         return results
     }
 
+    suspend fun runTextRecognition(bitmap: Bitmap): String = suspendCancellableCoroutine { cont ->
+        val image = InputImage.fromBitmap(bitmap, 0)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        recognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                cont.resume(visionText.text) {}
+            }
+            .addOnFailureListener { e ->
+                cont.resumeWithException(e)
+            }
+    }
+
     private fun extractName(fullText: String, results: MutableMap<String, String>): String {
         val ignoreKeywords = listOf(
             "government", "people", "republic", "bangladesh",
@@ -78,20 +90,7 @@ object NidUtils {
             ""
         }
     }
-
-    suspend fun runTextRecognition(bitmap: Bitmap): String = suspendCancellableCoroutine { cont ->
-        val image = InputImage.fromBitmap(bitmap, 0)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        recognizer.process(image)
-            .addOnSuccessListener { visionText ->
-                cont.resume(visionText.text) {}
-            }
-            .addOnFailureListener { e ->
-                cont.resumeWithException(e)
-            }
-    }
-
-    fun extractDob(text: String): String? {
+    private fun extractDob(text: String): String? {
         val dobRegex = Regex("(\\d{2}[-/ ]\\d{2}[-/ ]\\d{4}|\\d{2} [A-Za-z]{3} \\d{4})")
         return dobRegex.find(text)?.value
     }
