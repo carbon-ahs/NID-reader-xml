@@ -5,16 +5,20 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.util.Log
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
+import android.view.Surface
+import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 class CameraViewModel : ViewModel() {
     private val _cameraInitialized = MutableLiveData<Boolean>()
@@ -29,15 +33,57 @@ class CameraViewModel : ViewModel() {
     private lateinit var context: Context
     private val TAG = "CameraViewModel"
 
-    fun initialize(context: Context) {
+    fun initialize(context: Context, previewView: androidx.camera.view.PreviewView) {
         this.context = context
-        imageCapture = ImageCapture.Builder()
-            .setTargetAspectRatio(androidx.camera.core.AspectRatio.RATIO_4_3)
-            .build()
-        _cameraInitialized.value = true
+
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+
+            // ✅ Get screen ratio dynamically
+            val metrics = context.resources.displayMetrics
+            val screenAspectRatio = aspectRatio(metrics.widthPixels, metrics.heightPixels)
+
+            val rotation = previewView.display.rotation
+
+            val preview = Preview.Builder()
+                .setTargetAspectRatio(screenAspectRatio)
+                .setTargetRotation(rotation)
+                .build()
+
+            imageCapture = ImageCapture.Builder()
+                .setTargetAspectRatio(screenAspectRatio)
+                .setTargetRotation(rotation)
+                .build()
+
+            try {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(
+                    context as androidx.lifecycle.LifecycleOwner,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    imageCapture
+                )
+                preview.setSurfaceProvider(previewView.surfaceProvider)
+                _cameraInitialized.value = true
+            } catch (exc: Exception) {
+                Log.e(TAG, "Use case binding failed", exc)
+            }
+        }, ContextCompat.getMainExecutor(context))
     }
 
-    fun takePhoto(left: Float, top: Float, right: Float, bottom: Float, previewWidth: Int, previewHeight: Int) {
+    private fun aspectRatio(width: Int, height: Int): Int {
+        val previewRatio = max(width, height).toDouble() / min(width, height)
+        if (abs(previewRatio - 4.0 / 3.0) <= abs(previewRatio - 16.0 / 9.0)) {
+            return AspectRatio.RATIO_4_3
+        }
+        return AspectRatio.RATIO_16_9
+    }
+
+    fun takePhoto(
+        left: Float, top: Float, right: Float, bottom: Float,
+        previewWidth: Int, previewHeight: Int
+    ) {
         val photoFile = File(
             getOutputDirectory(),
             "IMG_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.jpg"
@@ -47,95 +93,56 @@ class CameraViewModel : ViewModel() {
 
         imageCapture.takePicture(
             outputOptions,
-            androidx.core.content.ContextCompat.getMainExecutor(context),
+            ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     try {
-                        // Load the captured image
                         val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
-                        if (bitmap == null) {
-                            Log.e(TAG, "Failed to load bitmap from ${photoFile.absolutePath}")
-                            _captureResult.value = "Failed to load captured image"
-                            return
-                        }
+                            ?: run {
+                                Log.e(TAG, "Failed to load bitmap")
+                                _captureResult.value = "Failed to load captured image"
+                                return
+                            }
 
-                        // Get rotation from ImageCapture
-                        val rotationDegrees = imageCapture.targetRotation
-                        Log.d(TAG, "Preview: ${previewWidth}x${previewHeight}")
-                        Log.d(TAG, "Bitmap (raw): ${bitmap.width}x${bitmap.height}")
-                        Log.d(TAG, "Overlay Rect: left=$left, top=$top, right=$right, bottom=$bottom")
-                        Log.d(TAG, "Rotation: $rotationDegrees degrees")
-
-                        // Save original image for debugging
-                        FileOutputStream(originalFile).use { out ->
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-                        }
-                        Log.d(TAG, "Original image saved to ${originalFile.absolutePath}")
-
-                        // Rotate bitmap if needed
+                        val rotationDegrees = rotationDegreesFromSurface(imageCapture.targetRotation)
                         val rotatedBitmap = if (rotationDegrees != 0) {
                             val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-                            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-                            bitmap.recycle()
-                            rotated
-                        } else {
-                            bitmap
-                        }
-                        Log.d(TAG, "Bitmap (after rotation): ${rotatedBitmap.width}x${rotatedBitmap.height}")
+                            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                                .also { bitmap.recycle() }
+                        } else bitmap
 
-                        // Adjust coordinates for rotation
+                        FileOutputStream(originalFile).use { out ->
+                            rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                        }
+
                         val (adjustedLeft, adjustedTop, adjustedRight, adjustedBottom) = when (rotationDegrees) {
                             90 -> listOf(top, previewWidth - right, bottom, previewWidth - left)
                             270 -> listOf(previewHeight - bottom, left, previewHeight - top, right)
                             180 -> listOf(previewWidth - right, previewHeight - bottom, previewWidth - left, previewHeight - top)
                             else -> listOf(left, top, right, bottom)
                         }
-                        Log.d(TAG, "Adjusted Rect: left=$adjustedLeft, top=$adjustedTop, right=$adjustedRight, bottom=$adjustedBottom")
 
-                        // Calculate scaling factors considering fitCenter
-                        val previewAspectRatio = previewWidth.toFloat() / previewHeight
-                        val bitmapAspectRatio = rotatedBitmap.width.toFloat() / rotatedBitmap.height
-                        val scaleX = rotatedBitmap.width.toFloat() / previewWidth
-                        val scaleY = rotatedBitmap.height.toFloat() / previewHeight
-                        val effectivePreviewWidth = if (previewAspectRatio > bitmapAspectRatio) {
-                            (previewHeight * bitmapAspectRatio).toInt().coerceAtMost(previewWidth)
-                        } else {
-                            previewWidth
-                        }
-                        val effectivePreviewHeight = if (previewAspectRatio > bitmapAspectRatio) {
-                            previewHeight
-                        } else {
-                            (previewWidth / bitmapAspectRatio).toInt().coerceAtMost(previewHeight)
-                        }
-                        Log.d(TAG, "Effective Preview: ${effectivePreviewWidth}x${effectivePreviewHeight}")
+                        val normLeft = adjustedLeft.toFloat() / previewWidth
+                        val normTop = adjustedTop.toFloat() / previewHeight
+                        val normRight = adjustedRight.toFloat() / previewWidth
+                        val normBottom = adjustedBottom.toFloat() / previewHeight
 
-                        // Map overlay coordinates to bitmap
-                        val cropLeft = ((adjustedLeft / previewWidth) * effectivePreviewWidth * (scaleX)).toInt().coerceIn(0, rotatedBitmap.width)
-                        val cropTop = ((adjustedTop / previewHeight) * effectivePreviewHeight * (scaleY)).toInt().coerceIn(0, rotatedBitmap.height)
-                        val cropWidth = (((adjustedRight - adjustedLeft) / previewWidth) * effectivePreviewWidth * (scaleX)).toInt().coerceIn(0, rotatedBitmap.width - cropLeft)
-                        val cropHeight = (((adjustedBottom - adjustedTop) / previewHeight) * effectivePreviewHeight * (scaleY)).toInt().coerceIn(0, rotatedBitmap.height - cropTop)
+                        val cropLeft = (normLeft * rotatedBitmap.width).toInt()
+                        val cropTop = (normTop * rotatedBitmap.height).toInt()
+                        val cropRight = (normRight * rotatedBitmap.width).toInt()
+                        val cropBottom = (normBottom * rotatedBitmap.height).toInt()
 
-                        // Log expected vs. actual crop bounds
-                        Log.d(TAG, "Expected crop: left=${(adjustedLeft / previewWidth) * effectivePreviewWidth * scaleX}, " +
-                                "top=${(adjustedTop / previewHeight) * effectivePreviewHeight * scaleY}, " +
-                                "width=${((adjustedRight - adjustedLeft) / previewWidth) * effectivePreviewWidth * scaleX}, " +
-                                "height=${((adjustedBottom - adjustedTop) / previewHeight) * effectivePreviewHeight * scaleY}")
-                        Log.d(TAG, "Actual crop bounds: left=$cropLeft, top=$cropTop, width=$cropWidth, height=$cropHeight")
+                        val safeLeft = cropLeft.coerceIn(0, rotatedBitmap.width - 1)
+                        val safeTop = cropTop.coerceIn(0, rotatedBitmap.height - 1)
+                        val safeWidth = (cropRight - cropLeft).coerceAtLeast(1).coerceAtMost(rotatedBitmap.width - safeLeft)
+                        val safeHeight = (cropBottom - cropTop).coerceAtLeast(1).coerceAtMost(rotatedBitmap.height - safeTop)
 
-                        // Crop the bitmap
-                        val croppedBitmap = Bitmap.createBitmap(
-                            rotatedBitmap,
-                            cropLeft,
-                            cropTop,
-                            cropWidth,
-                            cropHeight
-                        )
+                        val croppedBitmap = Bitmap.createBitmap(rotatedBitmap, safeLeft, safeTop, safeWidth, safeHeight)
 
-                        // Save the cropped bitmap
                         FileOutputStream(photoFile).use { out ->
                             croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
                         }
-                        Log.d(TAG, "Cropped image saved to ${photoFile.absolutePath}")
+
                         croppedBitmap.recycle()
                         rotatedBitmap.recycle()
 
@@ -162,6 +169,16 @@ class CameraViewModel : ViewModel() {
         val mediaDir = context.externalMediaDirs.firstOrNull()?.let {
             File(it, "NIDReader").apply { mkdirs() }
         }
-        return if (mediaDir != null && mediaDir.exists()) mediaDir else context.filesDir
+        return mediaDir?.takeIf { it.exists() } ?: context.filesDir
+    }
+
+    private fun rotationDegreesFromSurface(rotation: Int): Int {
+        return when (rotation) {
+            Surface.ROTATION_0 -> 0
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
     }
 }
