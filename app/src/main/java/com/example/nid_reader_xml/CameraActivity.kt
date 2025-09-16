@@ -45,7 +45,7 @@ class CameraActivity : ComponentActivity() {
 
         // Capture button
         buttonCapture.setOnClickListener {
-            if (checkStoragePermission()) {
+//            if (checkStoragePermission()) {
                 val rect = idCardOverlay.getOverlayRect()
                 viewModel.takePhoto(
                     rect.left,
@@ -55,9 +55,9 @@ class CameraActivity : ComponentActivity() {
                     previewView.width,
                     previewView.height
                 )
-            } else {
-                requestStoragePermission()
-            }
+//            } else {
+//                requestStoragePermission()
+//            }
         }
 
         // Observe camera initialization

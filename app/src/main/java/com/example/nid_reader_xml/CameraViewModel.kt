@@ -88,7 +88,7 @@ class CameraViewModel : ViewModel() {
        fun takePhoto(
         left: Float, top: Float, right: Float, bottom: Float,
         previewWidth: Int, previewHeight: Int
-    ) {
+    ) { clearOutputDirectory()
         val photoFile = File(
             getOutputDirectory(),
             "IMG_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.jpg"
@@ -172,6 +172,10 @@ class CameraViewModel : ViewModel() {
                                 } catch (e: Exception) {
                                     Log.e(TAG, "NID extraction failed", e)
                                     null
+                                } finally {
+                                    // 🗑 delete the temp image file
+                                    deleteFileSafe(photoFile)
+                                    deleteFileSafe(originalFile)
                                 }
 
                                 // set LiveData synchronously (we're on Main dispatcher)
@@ -209,12 +213,31 @@ class CameraViewModel : ViewModel() {
         _captureResult.value = null
     }
 
-    private fun getOutputDirectory(): File {
+    private fun getOutputDirectoryV0(): File {
         val mediaDir = context.externalMediaDirs.firstOrNull()?.let {
             File(it, "NIDReader").apply { mkdirs() }
         }
         return mediaDir?.takeIf { it.exists() } ?: context.filesDir
     }
+
+    // Call this once when you want to start fresh
+    private fun clearOutputDirectory() {
+        val dir = File(context.filesDir, "NIDReader")
+        if (dir.exists()) {
+            dir.deleteRecursively()
+        }
+    }
+
+    // Safe getter that never deletes
+    private fun getOutputDirectory(): File {
+        val dir = File(context.filesDir, "NIDReader")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+
 
     private fun rotationDegreesFromSurface(rotation: Int): Int {
         return when (rotation) {
@@ -229,4 +252,16 @@ class CameraViewModel : ViewModel() {
     fun getStr() : String {
         return "ssjfsjf";
     }
+
+    fun deleteFileSafe(file: File?) {
+        try {
+            if (file != null && file.exists()) {
+                val deleted = file.delete()
+                Log.d("TAG", "Deleted file: ${file.name}, success=$deleted")
+            }
+        } catch (e: Exception) {
+            Log.e("TAG", "Failed to delete file: ${e.message}", e)
+        }
+    }
+
 }
