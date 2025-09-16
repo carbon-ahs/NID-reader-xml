@@ -84,17 +84,18 @@ class CameraActivity : ComponentActivity() {
 
                             // ✅ stop observing further to avoid multiple launches
                             viewModel.nidData.removeObservers(this)
-                        } else {
-                            val intent = Intent(this, ImagePreviewActivity::class.java).apply {
-                                putExtra("IMAGE_PATH", imagePath)
-                            }
                         }
+//                        else {
+//                            val intent = Intent(this, ImagePreviewActivity::class.java).apply {
+//                                putExtra("IMAGE_PATH", imagePath)
+//                            }
+//                        }
                     }
 
-                    val intent = Intent(this, ImagePreviewActivity::class.java).apply {
-                        putExtra("IMAGE_PATH", imagePath)
-                    }
-                    startActivity(intent)
+//                    val intent = Intent(this, ImagePreviewActivity::class.java).apply {
+//                        putExtra("IMAGE_PATH", imagePath)
+//                    }
+//                    startActivity(intent)
                 } else if (it.startsWith("Failed")) {
                     finish()
                 }

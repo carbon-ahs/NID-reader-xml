@@ -26,6 +26,7 @@ class IDCardOverlay @JvmOverloads constructor(
     }
     private val idCardAspectRatio = 1.586f // Standard ID card ratio (85.6mm x 54mm)
     private var cardRect = RectF()
+    private val cornerRadius = 20f // Adjust this value to change corner roundness
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
@@ -42,14 +43,19 @@ class IDCardOverlay @JvmOverloads constructor(
         super.onDraw(canvas)
         // Draw semi-transparent overlay for the entire view
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), overlayPaint)
-        // Clear the ID card area (transparent)
-        canvas.drawRect(cardRect, Paint().apply {
-            color = Color.TRANSPARENT
-            style = Paint.Style.FILL
-            xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-        })
-        // Draw white border around the ID card area
-        canvas.drawRect(cardRect, borderPaint)
+        // Clear the ID card area (transparent) with rounded corners
+        canvas.drawRoundRect(
+            cardRect,
+            cornerRadius,
+            cornerRadius,
+            Paint().apply {
+                color = Color.TRANSPARENT
+                style = Paint.Style.FILL
+                xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+            }
+        )
+        // Draw white border around the ID card area with rounded corners
+        canvas.drawRoundRect(cardRect, cornerRadius, cornerRadius, borderPaint)
     }
 
     fun getOverlayRect(): RectF {

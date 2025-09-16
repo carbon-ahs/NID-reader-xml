@@ -18,7 +18,7 @@ object NidUtils {
         val lines = fullText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
 
         // Extract name
-        val name = extractName(fullText, results)
+        val name = extractName(fullText)
         results["name"] = name
 
         // Extract dob
@@ -26,41 +26,45 @@ object NidUtils {
         if (dob != null) results["dob"] = dob
 
         // Extract NID number
-        var nidFound: String? = null
-        var isSmartNid = false
+        val nidNo= extractNIDno(fullText)
+        if (nidNo != null) results["nidNo"] = nidNo
 
-        val idNoRegex = Regex("ID NO[:\\s]+(\\b\\d{9,10}\\b)")
-        nidFound = idNoRegex.find(fullText)?.groupValues?.get(1)
-        if (nidFound != null) {
-            isSmartNid = false
-        } else {
-            val nidNoRegex = Regex("NID No[.:\\s]+(\\b\\d{3}\\s\\d{3}\\s\\d{4}\\b)")
-            nidFound = nidNoRegex.find(fullText)?.groupValues?.get(1)
-            if (nidFound != null) {
-                isSmartNid = true
-            } else {
-                val nidIndex = lines.indexOfFirst {
-                    it.matches(Regex("NID No[.:\\s]*")) || it.matches(Regex("ID NO[:\\s]*"))
-                }
-                if (nidIndex != -1 && nidIndex < lines.size - 1) {
-                    val nextLine = lines[nidIndex + 1]
-                    val smartNidMatch = Regex("\\b\\d{3}\\s\\d{3}\\s\\d{4}\\b").find(nextLine)
-                    if (smartNidMatch != null) {
-                        nidFound = smartNidMatch.value
-                        isSmartNid = true
-                    } else {
-                        val nonSmartNidMatch = Regex("\\b\\d{9,10}\\b").find(nextLine)
-                        nidFound = nonSmartNidMatch?.value
-                        if (nidFound != null) isSmartNid = false
-                    }
-                }
-            }
-        }
 
-        if (nidFound != null) {
-            results["nid"] = nidFound
-            results["card_type"] = if (isSmartNid) "Smart NID" else "Non-Smart NID"
-        }
+//        var nidFound: String? = null
+//        var isSmartNid = false
+//
+//        val idNoRegex = Regex("ID NO[:\\s]+(\\b\\d{9,10}\\b)")
+//        nidFound = idNoRegex.find(fullText)?.groupValues?.get(1)
+//        if (nidFound != null) {
+//            isSmartNid = false
+//        } else {
+//            val nidNoRegex = Regex("NID No[.:\\s]+(\\b\\d{3}\\s\\d{3}\\s\\d{4}\\b)")
+//            nidFound = nidNoRegex.find(fullText)?.groupValues?.get(1)
+//            if (nidFound != null) {
+//                isSmartNid = true
+//            } else {
+//                val nidIndex = lines.indexOfFirst {
+//                    it.matches(Regex("NID No[.:\\s]*")) || it.matches(Regex("ID NO[:\\s]*"))
+//                }
+//                if (nidIndex != -1 && nidIndex < lines.size - 1) {
+//                    val nextLine = lines[nidIndex + 1]
+//                    val smartNidMatch = Regex("\\b\\d{3}\\s\\d{3}\\s\\d{4}\\b").find(nextLine)
+//                    if (smartNidMatch != null) {
+//                        nidFound = smartNidMatch.value
+//                        isSmartNid = true
+//                    } else {
+//                        val nonSmartNidMatch = Regex("\\b\\d{9,10}\\b").find(nextLine)
+//                        nidFound = nonSmartNidMatch?.value
+//                        if (nidFound != null) isSmartNid = false
+//                    }
+//                }
+//            }
+//        }
+//
+//        if (nidFound != null) {
+//            results["nid"] = nidFound
+//            results["card_type"] = if (isSmartNid) "Smart NID" else "Non-Smart NID"
+//        }
 
         return results
     }
@@ -77,14 +81,19 @@ object NidUtils {
             }
     }
 
-    private fun extractName(fullText: String, results: MutableMap<String, String>): String {
+    private fun extractName(fullText: String): String {
         val ignoreKeywords = listOf(
             "government", "people", "republic", "bangladesh",
             "date of birth", "smart nid", "national", "id", "name"
         )
-        val nameRegex = Regex("Name[:\\s]+([A-Za-z\\s.]+)")
-        val name = nameRegex.find(fullText)?.groupValues?.get(1)?.trim()
-        return if (name != null && !ignoreKeywords.any { keyword -> name.contains(keyword, ignoreCase = true) }) {
+//        val nameRegex = Regex("Name[:\\s]+([A-Za-z\\s.]+)$")
+//        val nameRegex = Regex("Name[:\\s]+([A-Z\\s]+)")
+//        val nameRegex = Regex("(?i)Name[:\\s]+([A-Z.\\s]+)")
+//        val nameRegex = Regex("Name[:\\s]+([A-Za-z. ]+)")
+        val nameRegex = Regex("(?i)Name[:\\s]+([A-Z. ]+)")
+        val name = nameRegex.find(fullText)?.groups?.get(1)?.value
+
+        return if (name != null) {
             name
         } else {
             ""
@@ -93,5 +102,16 @@ object NidUtils {
     private fun extractDob(text: String): String? {
         val dobRegex = Regex("(\\d{2}[-/ ]\\d{2}[-/ ]\\d{4}|\\d{2} [A-Za-z]{3} \\d{4})")
         return dobRegex.find(text)?.value
+    }
+
+    private fun extractNIDno(text: String) : String? {
+
+        val idRegex = Regex("^\\s*(?:NID\\s*No|ID\\s*NO?)[:\\-]?\\s*([0-9 ]+)",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE))
+
+        val match = idRegex.find(text)
+        val rawId = match?.groups?.get(1)?.value?.trim()
+        val cleanId = rawId?.replace(" ", "")
+        return cleanId
     }
 }
