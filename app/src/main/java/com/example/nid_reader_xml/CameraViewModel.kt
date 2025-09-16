@@ -13,6 +13,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.nid_reader_xml.NidUtils.extractNidData
 import com.example.nid_reader_xml.NidUtils.extractNidDataWithDetection
 import kotlinx.coroutines.launch
 import java.io.File
@@ -148,17 +149,48 @@ class CameraViewModel : ViewModel() {
                         }
 
 
+//                        viewModelScope.launch {
+//                            _nidData.postValue(null) // clear old data immediately
+//                            var nidData: Map<String, String>? = null
+//                            try {
+//                                nidData = extractNidDataWithDetection(croppedBitmap)
+//                                Log.d(TAG, "NID Data: $nidData")
+//                            } catch (e: Exception) {
+//                                Log.e(TAG, "NID extraction failed: ${e.message}", e)
+//                            }
+//                            _nidData.postValue(nidData)
+//                        }
+
+                        // --- IMPORTANT: do OCR first (suspend) and set nidData synchronously ---
                         viewModelScope.launch {
-                            var nidData: Map<String, String>? = null
                             try {
-                                nidData = extractNidDataWithDetection(croppedBitmap)
-                                Log.d(TAG, "NID Data: $nidData")
+                                _nidData.value = null
+
+                                // extractNidData is suspend — runs OCR and parsing
+                                val nidData = try {
+                                    extractNidData(croppedBitmap) // suspend function
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "NID extraction failed", e)
+                                    null
+                                }
+
+                                // set LiveData synchronously (we're on Main dispatcher)
+                                nidData?.let {
+                                    _nidData.value = it
+                                    Log.d(TAG, "NID Data posted: $it")
+                                } ?: run {
+                                    Log.w(TAG, "NID Data is null or empty")
+                                }
+
+                                // only after nidData is set (or processing finished) set capture result
+                                _captureResult.value = "Photo saved: ${photoFile.absolutePath}"
                             } catch (e: Exception) {
-                                Log.e(TAG, "NID extraction failed: ${e.message}", e)
+                                Log.e(TAG, "Processing coroutine failed: ${e.message}", e)
+                                _captureResult.value = "Failed to process photo: ${e.message}"
                             }
-                            _nidData.postValue(nidData)
                         }
-                        _captureResult.value = "Photo saved: ${photoFile.absolutePath}"
+
+//                        _captureResult.value = "Photo saved: ${photoFile.absolutePath}"
                     } catch (e: Exception) {
                         Log.e(TAG, "Cropping failed: ${e.message}", e)
                         _captureResult.value = "Failed to crop image: ${e.message}"

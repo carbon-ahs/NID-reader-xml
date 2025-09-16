@@ -8,6 +8,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
 
 object NidUtils {
 
@@ -68,8 +69,28 @@ object NidUtils {
 
         return results
     }
+    suspend fun extractNidData(bitmap: Bitmap): Map<String, String> {
 
-    suspend fun runTextRecognition(bitmap: Bitmap): String = suspendCancellableCoroutine { cont ->
+            val results = mutableMapOf<String, String>()
+            val fullText = runTextRecognition(bitmap) // suspendCancellableCoroutine function
+            Log.d("NidUtils", "extractNidDataWithDetection: $fullText")
+
+            // Extract name
+            val name = extractName(fullText)
+            results["name"] = name
+
+            // Extract dob
+            val dob = extractDob(fullText)
+            if (dob != null) results["dob"] = dob
+
+            // Extract NID number
+            val nidNo= extractNIDno(fullText)
+            if (nidNo != null) results["nidNo"] = nidNo
+
+            return results
+        }
+
+    private suspend fun runTextRecognition(bitmap: Bitmap): String = suspendCancellableCoroutine { cont ->
         val image = InputImage.fromBitmap(bitmap, 0)
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         recognizer.process(image)
@@ -86,10 +107,7 @@ object NidUtils {
             "government", "people", "republic", "bangladesh",
             "date of birth", "smart nid", "national", "id", "name"
         )
-//        val nameRegex = Regex("Name[:\\s]+([A-Za-z\\s.]+)$")
-//        val nameRegex = Regex("Name[:\\s]+([A-Z\\s]+)")
-//        val nameRegex = Regex("(?i)Name[:\\s]+([A-Z.\\s]+)")
-//        val nameRegex = Regex("Name[:\\s]+([A-Za-z. ]+)")
+
         val nameRegex = Regex("(?i)Name[:\\s]+([A-Z. ]+)")
         val name = nameRegex.find(fullText)?.groups?.get(1)?.value
 
