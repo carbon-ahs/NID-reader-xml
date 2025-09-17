@@ -221,7 +221,7 @@ class CameraViewModel : ViewModel() {
     }
 
     // Call this once when you want to start fresh
-    private fun clearOutputDirectory() {
+     fun clearOutputDirectory() {
         val dir = File(context.filesDir, "NIDReader")
         if (dir.exists()) {
             dir.deleteRecursively()

@@ -203,4 +203,9 @@ class CameraActivity : ComponentActivity() {
             }
         }, ContextCompat.getMainExecutor(this))
     }
+
+    override fun onDestroy() {
+        viewModel.clearOutputDirectory()
+        super.onDestroy()
+    }
 }
